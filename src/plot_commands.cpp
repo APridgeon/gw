@@ -707,9 +707,12 @@ namespace Commands {
         p->opts.tab_track_height = value;
         if (old_th > 0.0 && !p->tracks.empty()) {
             double ratio = value / old_th;
+            double consumedHeight = 0;
             for (auto& trk : p->tracks) {
                 trk.px_height *= ratio;
+                consumedHeight += trk.px_height;
             }
+            p->totalTabixY = consumedHeight;
         }
         for (auto& cl : p->collections) {
             cl.resetDrawState();
