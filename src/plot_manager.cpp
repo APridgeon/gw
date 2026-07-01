@@ -1482,6 +1482,20 @@ namespace Manager {
         fonts.setOverlayHeight(monitorScale);
     }
 
+    // Vertical pixel band (render coords) of the scale bar - where a press begins a
+    // drag-to-zoom. Single source of truth for both the hit-test (handleSingleModeLeftClick)
+    // and the frontend selection highlight (exposed via get_viewport()).
+    void GwPlot::scaleBarBounds(float &top, float &bottom) {
+        if (!opts.scale_bar) {
+            top = 0;
+            bottom = 0;
+            return;
+        }
+        float yh = std::fmax(fb_height * 0.0175f, 10.0f * monitorScale);
+        top = topMenuSpace;
+        bottom = topMenuSpace + fonts.overlayHeight + gap + yh * 0.70f;
+    }
+
     // sets scaling of y-position for various elements
     void GwPlot::setScaling() {
 

@@ -244,6 +244,9 @@ namespace Manager {
         void processBam();
         void resetCollectionRegionPtrs();
         void setScaling();
+        // Vertical pixel band (render coords) occupied by the scale bar - the region where a
+        // press starts a drag-to-zoom. top==bottom means the scale bar is disabled.
+        void scaleBarBounds(float &top, float &bottom);
         void setVariantSite(std::string &chrom, long start, std::string &chrom2, long stop);
         int startUI(GrDirectContext* sContext, SkSurface *sSurface, int delay, std::vector<std::string> &extra_commands);
 #ifdef __EMSCRIPTEN__

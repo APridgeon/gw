@@ -1698,10 +1698,10 @@ namespace Manager {
         // Note: release check is placed before the slider check so that dragging from
         // the scale bar down to the slider area still triggers the zoom on release.
         if (opts.scale_bar) {
-            float yh = std::fmax(fb_height * 0.0175f, 10.0f * monitorScale);
-            // Match the visual bottom of the scale bar (ticks end at top2 + yh*0.70).
-            // top2 = overlayHeight + gap + topMenuSpace
-            float scaleBarBottom = topMenuSpace + fonts.overlayHeight + gap + yh * 0.70f;
+            // Scale-bar band (top/bottom) is computed centrally so the frontend highlight
+            // (get_viewport()) and this hit-test can't drift apart.
+            float scaleBarTop, scaleBarBottom;
+            scaleBarBounds(scaleBarTop, scaleBarBottom);
             if (action == GLFW_RELEASE && scaleBarDragging) {
                 scaleBarDragging = false;
                 // xW is in framebuffer coords (same as scaleBarDragStartX)
@@ -1729,7 +1729,7 @@ namespace Manager {
                 resetDragState();
                 return;
             }
-            if (action == GLFW_PRESS && yW >= topMenuSpace && yW <= scaleBarBottom) {
+            if (action == GLFW_PRESS && yW >= scaleBarTop && yW <= scaleBarBottom) {
                 scaleBarDragging = true;
                 scaleBarDragStartX = xW;  // stored in framebuffer coords
                 float colWidth = (float)fb_width / (float)regions.size();
