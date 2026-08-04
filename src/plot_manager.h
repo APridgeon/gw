@@ -172,6 +172,17 @@ namespace Manager {
         Show last_mode;
 
         std::string selectedAlign;  // SAM text of most-recently clicked read (used by commands)
+        std::string selectedIntron;  // TSV (chrom,start,end,strand,count) of most-recently clicked intron
+        std::string selectedFeature;  // TAB record "TITLE\tkey\tval..." for a clicked gff/coverage/reference element
+        std::string selectedIntronChrom;  // identity of the highlighted intron (persists across redraws)
+        int selectedIntronStart{-1};
+        int selectedIntronEnd{-1};
+        int selectedIntronStrand{-2};  // -2 = none (0/1/2 are valid gw strands)
+        // Identity of a highlighted gff exon/intron segment (persists across redraws).
+        std::string selectedFeatureChrom;
+        std::string selectedFeatureName;   // transcript name, to disambiguate overlapping features
+        int selectedFeatureStart{-1};
+        int selectedFeatureEnd{-1};
 
         struct ReadPopup {
             std::string ansi;  // ANSI-coded read info text
@@ -259,6 +270,9 @@ namespace Manager {
         void processBam();
         void resetCollectionRegionPtrs();
         void setScaling();
+        // Vertical pixel band (render coords) occupied by the scale bar - the region where a
+        // press starts a drag-to-zoom. top==bottom means the scale bar is disabled.
+        void scaleBarBounds(float &top, float &bottom);
         void setVariantSite(std::string &chrom, long start, std::string &chrom2, long stop);
         int startUI(GrDirectContext* sContext, SkSurface *sSurface, int delay, std::vector<std::string> &extra_commands);
 #ifdef __EMSCRIPTEN__
@@ -276,6 +290,7 @@ namespace Manager {
         bool commandProcessed();
         void prepareSelectedRegion();
         void addAlignmentToSelectedRegion();
+        void setVScroll(int value);  // set absolute vertical read-scroll offset and re-layout
 
         // Draw functions
         void drawBackground();

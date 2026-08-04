@@ -69,6 +69,32 @@ namespace Manager {
         }
     }
 
+    // Set an absolute vertical read-scroll offset across all collections and
+    // re-run the layout. Mirrors the Ctrl+[ / Ctrl+] handling in registerKey
+    // (see the reset block below), but takes an absolute value rather than a step.
+    void GwPlot::setVScroll(int value) {
+        if (collections.empty() || regions.empty()) {
+            return;
+        }
+        int v = std::max(0, value);
+        for (auto & cl : collections) {
+            cl.vScroll = v;
+        }
+        redraw = true;
+        processed = true;
+        imageCacheQueue.clear();
+        for (auto & cl : collections) {
+            cl.resetDrawState();
+            cl.levelsStart.clear();
+            cl.levelsEnd.clear();
+            cl.linked.clear();
+            Utils::SortType srt_option = regions[regionSelection].getSortOption();
+            for (auto &itm: cl.readQueue) { itm.y = -1; }
+            int maxY = Segs::findY(cl, cl.readQueue, opts.link_op, opts, false, srt_option);
+            samMaxY = (maxY > samMaxY || opts.tlen_yscale) ? maxY : samMaxY;
+        }
+    }
+
     // keeps track of input commands. returning GLFW_KEY_UNKNOWN stops further processing of key codes
     int GwPlot::registerKey(GLFWwindow* wind, int key, int scancode, int action, int mods) {
         std::ostream& out = (terminalOutput) ? std::cout : outStr;
@@ -1707,10 +1733,10 @@ namespace Manager {
         // Note: release check is placed before the slider check so that dragging from
         // the scale bar down to the slider area still triggers the zoom on release.
         if (opts.scale_bar) {
-            float yh = std::fmax(fb_height * 0.0175f, 10.0f * monitorScale);
-            // Match the visual bottom of the scale bar (ticks end at top2 + yh*0.70).
-            // top2 = overlayHeight + gap + topMenuSpace
-            float scaleBarBottom = topMenuSpace + fonts.overlayHeight + gap + yh * 0.70f;
+            // Scale-bar band (top/bottom) is computed centrally so the frontend highlight
+            // (get_viewport()) and this hit-test can't drift apart.
+            float scaleBarTop, scaleBarBottom;
+            scaleBarBounds(scaleBarTop, scaleBarBottom);
             if (action == GLFW_RELEASE && scaleBarDragging) {
                 scaleBarDragging = false;
                 // xW is in framebuffer coords (same as scaleBarDragStartX)
@@ -1738,7 +1764,7 @@ namespace Manager {
                 resetDragState();
                 return;
             }
-            if (action == GLFW_PRESS && yW >= topMenuSpace && yW <= scaleBarBottom) {
+            if (action == GLFW_PRESS && yW >= scaleBarTop && yW <= scaleBarBottom) {
                 scaleBarDragging = true;
                 scaleBarDragStartX = xW;  // stored in framebuffer coords
                 float colWidth = (float)fb_width / (float)regions.size();
@@ -1823,6 +1849,15 @@ namespace Manager {
                 rp.uid  = nextPopupUid++;
                 refPopups.push_back(std::move(rp));
             }
+            // Machine-readable record for the web popup: the reference base under the cursor.
+            int pos = (int)((xW - xOffset) / xScaling) + region->start;
+            int i = pos - region->start;
+            if (region->refSeq != nullptr && i >= 0 && i < region->refSeqLen) {
+                char b = region->refSeq[i];
+                char up = (b >= 'a' && b <= 'z') ? (char)(b - 32) : b;
+                selectedFeature = "Reference\tPosition\t" + region->chrom + ":"
+                                + Term::intToStringCommas(pos) + "\tBase\t" + std::string(1, up);
+            }
         };
         if (collections.empty()) {
             float xScaling = (float)((regionWidth - gap - gap) /
@@ -1877,6 +1912,80 @@ namespace Manager {
             target_qname = saved_qname;
             target_pos = saved_pos;
             Term::printTrack(relX, targetTrack, &regions[tIdx], false, featureLevel, trackIdx, target_qname, &target_pos, out);
+            // Capture the clicked feature for Python (mirrors selectedAlign for reads):
+            // introns use the dedicated selectedIntron TSV; other GFF/BED features use the
+            // generic selectedFeature record consumed by the web popup.
+            selectedIntron.clear();
+            selectedFeature.clear();
+            selectedFeatureChrom.clear();
+            selectedFeatureName.clear();
+            selectedFeatureStart = -1;
+            selectedFeatureEnd = -1;
+            if (trackIdx < (int)regions[tIdx].featuresInView.size()) {
+                auto *rgn = &regions[tIdx];
+                int target = (int)((float)(rgn->end - rgn->start) * relX) + rgn->start;
+                int jitter = (rgn->end - rgn->start) * 0.025;
+                for (auto &b : rgn->featuresInView.at(trackIdx)) {
+                    if (b.start - jitter <= target && b.end + jitter >= target && b.level == featureLevel) {
+                        if (targetTrack.kind == HGW::FType::INTRON) {
+                            selectedIntron = b.chrom + "\t" + std::to_string(b.start) + "\t"
+                                           + std::to_string(b.end) + "\t" + std::to_string(b.strand) + "\t"
+                                           + std::to_string((int)b.value);
+                            // Record the highlight identity (persists across redraws) and force a
+                            // redraw so the selection outline renders on this click.
+                            selectedIntronChrom = b.chrom;
+                            selectedIntronStart = b.start;
+                            selectedIntronEnd = b.end;
+                            selectedIntronStrand = b.strand;
+                            redraw = true;
+                        } else {
+                            // Resolve the click to a specific exon (a drawn box) or intron
+                            // (a gap between boxes). Merge the drawn sub-blocks
+                            // (drawThickness>=1; skip undrawn codons) into disjoint spans so
+                            // overlapping exon/CDS/UTR entries collapse to the visible box.
+                            std::vector<std::pair<int,int>> spans;
+                            for (size_t k = 0; k < b.s.size() && k < b.e.size(); ++k) {
+                                if (k < b.drawThickness.size() && b.drawThickness[k] == 0) continue;  // undrawn codon
+                                if (b.s[k] <= b.start && b.e[k] >= b.end) continue;  // whole-transcript container (mRNA/gene) — would swallow the introns
+                                spans.emplace_back(b.s[k], b.e[k]);
+                            }
+                            if (spans.empty()) spans.emplace_back(b.start, b.end);
+                            std::sort(spans.begin(), spans.end());
+                            std::vector<std::pair<int,int>> merged;
+                            for (auto &sp : spans) {
+                                if (!merged.empty() && sp.first <= merged.back().second) {
+                                    merged.back().second = std::max(merged.back().second, sp.second);
+                                } else {
+                                    merged.push_back(sp);
+                                }
+                            }
+                            const char *label = "Gene";  // fallback when the click resolves to no specific exon/intron
+                            int segStart = b.start, segEnd = b.end;  // fallback: whole transcript/gene span
+                            for (size_t k = 0; k < merged.size(); ++k) {
+                                if (merged[k].first <= target && target <= merged[k].second) {
+                                    label = "Exon"; segStart = merged[k].first; segEnd = merged[k].second; break;
+                                }
+                                if (k + 1 < merged.size() && target > merged[k].second && target < merged[k + 1].first) {
+                                    label = "Intron"; segStart = merged[k].second; segEnd = merged[k + 1].first; break;
+                                }
+                            }
+                            const char *strand = (b.strand == 1) ? "+" : (b.strand == 2) ? "-" : ".";
+                            selectedFeature = std::string(label) + "\tName\t" + (b.name.empty() ? "(unnamed)" : b.name)
+                                            + "\tLocation\t" + b.chrom + ":" + Term::intToStringCommas(segStart)
+                                            + "-" + Term::intToStringCommas(segEnd)
+                                            + "\tStrand\t" + strand
+                                            + "\tParent\t" + (b.parent.empty() ? "-" : b.parent);
+                            // Highlight identity (persists across redraws) + force redraw.
+                            selectedFeatureChrom = b.chrom;
+                            selectedFeatureName = b.name;
+                            selectedFeatureStart = segStart;
+                            selectedFeatureEnd = segEnd;
+                            redraw = true;
+                        }
+                        break;
+                    }
+                }
+            }
             // Build track popup
             std::string ansiStr = uiOut.str();
             if (!ansiStr.empty()) {
@@ -1910,7 +2019,8 @@ namespace Manager {
         // Coverage-area click (above the reads): open coverage popup
         if (yW < cl.yOffset && cl.region->end - cl.region->start < 75000) {
             std::ostringstream uiOut;
-            Term::printCoverage(pos, cl, uiOut);
+            // Capture a machine-readable record for the web popup (depth + per-base counts).
+            Term::printCoverage(pos, cl, uiOut, &selectedFeature);
             CovPopup cp;
             cp.ansi     = uiOut.str();
             cp.chromPos = cl.region->chrom + ":" + Term::intToStringCommas(pos);

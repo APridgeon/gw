@@ -1534,6 +1534,20 @@ namespace Manager {
         fonts.setOverlayHeight(monitorScale);
     }
 
+    // Vertical pixel band (render coords) of the scale bar - where a press begins a
+    // drag-to-zoom. Single source of truth for both the hit-test (handleSingleModeLeftClick)
+    // and the frontend selection highlight (exposed via get_viewport()).
+    void GwPlot::scaleBarBounds(float &top, float &bottom) {
+        if (!opts.scale_bar) {
+            top = 0;
+            bottom = 0;
+            return;
+        }
+        float yh = std::fmax(fb_height * 0.0175f, 10.0f * monitorScale);
+        top = topMenuSpace;
+        bottom = topMenuSpace + fonts.overlayHeight + gap + yh * 0.70f;
+    }
+
     // sets scaling of y-position for various elements
     void GwPlot::setScaling() {
 
@@ -1556,19 +1570,20 @@ namespace Manager {
         if (tracks.empty()) {
             totalTabixY = 0;
         } else {
-            bool px_height_set = tracks.front().px_height > 0;
-            if (!px_height_set) {  // If not set elsewhere, this makes tracks same height
-                if (nbams == 0) {
-                    totalTabixY = availableHeight;
-                    tabixY = totalTabixY / nTracks;
-                } else {
-                    totalTabixY = availableHeight * opts.tab_track_height;
-                    tabixY = totalTabixY / nTracks;
-                }
-                for (auto &item : tracks) {
-                    item.px_height = tabixY;
-                }
+            // Each track gets its own height. Tracks with an explicit height_fraction
+            // override use it; the rest share the default annotation area equally. This
+            // lets GFF3/intron/etc. tracks be resized independently while newly-added
+            // tracks (e.g. introns toggled on) still get a sensible default.
+            float default_frac = (nbams == 0) ? (1.0f / nTracks)
+                                              : (opts.tab_track_height / nTracks);
+            totalTabixY = 0;
+            for (auto &item : tracks) {
+                float frac = (item.height_fraction > 0.0) ? (float)item.height_fraction
+                                                          : default_frac;
+                item.px_height = availableHeight * frac;
+                totalTabixY += item.px_height;
             }
+            tabixY = totalTabixY / nTracks;
         }
         availableHeight -= totalTabixY;
         if (nbams == 0) {
@@ -1870,6 +1885,14 @@ namespace Manager {
         ctx.topMenuSpace = topMenuSpace;
         ctx.overlayHeight = fonts.overlayHeight;
         ctx.drawLocation = drawLocation;
+        ctx.selectedIntronChrom = selectedIntronChrom;
+        ctx.selectedIntronStart = selectedIntronStart;
+        ctx.selectedIntronEnd = selectedIntronEnd;
+        ctx.selectedIntronStrand = selectedIntronStrand;
+        ctx.selectedFeatureChrom = selectedFeatureChrom;
+        ctx.selectedFeatureName = selectedFeatureName;
+        ctx.selectedFeatureStart = selectedFeatureStart;
+        ctx.selectedFeatureEnd = selectedFeatureEnd;
     }
 
     void GwPlot::overlayImGui(bool& pending_settings_close) {
