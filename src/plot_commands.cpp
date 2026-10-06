@@ -761,6 +761,9 @@ namespace Commands {
                 for (auto &cl: p->collections) {
                     if (cl.regionIdx == p->regionSelection) {
                         cl.region = &(p->regions)[p->regionSelection];
+                        for (auto &aln: cl.readQueue) {
+                            bam_destroy1(aln.delegate);
+                        }
                         cl.readQueue.clear();
                         cl.covArr.clear();
                         cl.levelsStart.clear();
