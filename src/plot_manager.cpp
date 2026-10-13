@@ -2712,12 +2712,28 @@ namespace Manager {
 
     std::pair<const uint8_t*, size_t> GwPlot::encodeToPng(int compression_level) {
         assert (rasterSurface != nullptr);
-        sk_sp<SkImage> img = rasterSurface->makeImageSnapshot();
 #if !defined(OLD_SKIA) || OLD_SKIA == 0
+        // Encode straight from the surface's pixels
+        SkPixmap pixmap;
+        if (!rasterSurface->peekPixels(&pixmap)) {
+            return {nullptr, 0};
+        }
+        // With an opaque background every pixel is opaque, so write RGB and skip the alpha channel
+        if (opts.theme.bgPaint.getAlpha() == 255) {
+            pixmap.reset(pixmap.info().makeAlphaType(kOpaque_SkAlphaType), pixmap.addr(), pixmap.rowBytes());
+        }
         SkPngEncoder::Options options;
         options.fZLibLevel = compression_level;
-        sk_sp<SkData> png(SkPngEncoder::Encode(nullptr, img.get(), options));
+        // Rows mostly repeat the row above (tracks, reads), so the Up filter suits them: it's quicker
+        // than trying every filter on every row and gives smaller files here.
+        options.fFilterFlags = SkPngEncoder::FilterFlag::kUp;
+        SkDynamicMemoryWStream stream;
+        if (!SkPngEncoder::Encode(&stream, pixmap, options)) {
+            return {nullptr, 0};
+        }
+        sk_sp<SkData> png = stream.detachAsData();
 #else
+        sk_sp<SkImage> img = rasterSurface->makeImageSnapshot();
         sk_sp<SkData> png(img->encodeToData());  // sk_sp is a shared pointer
 #endif
         m_encodedPngData = png; // Store as a member variable of type sk_sp<SkData>
