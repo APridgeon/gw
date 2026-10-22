@@ -27,8 +27,12 @@ EM_SHARED_FLAGS := -fexceptions --use-port=contrib.glfw3 \
 
 CPPFLAGS += $(EM_SHARED_FLAGS) -I$(WASM_HTS_PATH)
 
+# Optimisation for GW's C++ (and, since CXXFLAGS is passed to the link, wasm-opt's).
+# Override to tune a build, e.g. WASM_OPT="-O3 -msimd128" (WebAssembly SIMD).
+WASM_OPT ?= -O2
+
 # Match the sk_sp ABI used by the CanvasKit-built libskia.a (is_trivial_abi=true).
-CXXFLAGS += -D__STDC_FORMAT_MACROS -O2 "-DSK_TRIVIAL_ABI=[[clang::trivial_abi]]"
+CXXFLAGS += -D__STDC_FORMAT_MACROS $(WASM_OPT) "-DSK_TRIVIAL_ABI=[[clang::trivial_abi]]"
 
 # Link flags for both outputs: the browser UI (gw.html) and the headless module
 # (make headless, see the root Makefile).
