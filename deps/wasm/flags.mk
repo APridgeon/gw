@@ -30,6 +30,8 @@ CPPFLAGS += $(EM_SHARED_FLAGS) -I$(WASM_HTS_PATH)
 # Match the sk_sp ABI used by the CanvasKit-built libskia.a (is_trivial_abi=true).
 CXXFLAGS += -D__STDC_FORMAT_MACROS -O2 "-DSK_TRIVIAL_ABI=[[clang::trivial_abi]]"
 
+# Link flags for both outputs: the browser UI (gw.html) and the headless module
+# (make headless, see the root Makefile).
 LDFLAGS  += -L$(WASM_SKIA_PATH) -L$(WASM_HTS_PATH) -L$(WASM_LZMA_PATH) \
             $(EM_SHARED_FLAGS) \
             -sUSE_WEBGL2=1 -sFULL_ES2=1 \
@@ -39,12 +41,16 @@ LDFLAGS  += -L$(WASM_SKIA_PATH) -L$(WASM_HTS_PATH) -L$(WASM_LZMA_PATH) \
             -sMIN_WEBGL_VERSION=2 \
             -sNO_EXIT_RUNTIME=1 \
             -sFORCE_FILESYSTEM=1 \
-            -sEXPORTED_RUNTIME_METHODS=callMain,Asyncify,FS \
-            -lidbfs.js \
-            -sASYNCIFY=1 \
-            -sASYNCIFY_STACK_SIZE=4194304 \
-            $(WASM_LDFLAGS_EXTRA) \
             -sEXIT_RUNTIME=0
+
+# Link flags for the browser UI only: its page calls main (callMain), keeps settings in
+# IndexedDB, and reads local and online files asynchronously (Asyncify). The headless
+# module reads files synchronously, in a Web Worker, so it needs none of them.
+WASM_UI_LDFLAGS := -sEXPORTED_RUNTIME_METHODS=callMain,Asyncify,FS \
+                   -lidbfs.js \
+                   -sASYNCIFY=1 \
+                   -sASYNCIFY_STACK_SIZE=4194304 \
+                   $(WASM_LDFLAGS_EXTRA)
 
 SKIA_LIBS := -lskia -lskcms -ljpeg -lpng
 LDLIBS    += $(SKIA_LIBS) -l:libhts.a -l:liblzma.a

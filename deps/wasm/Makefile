@@ -4,6 +4,8 @@
 #
 # Usage (from this directory):
 #   make          — build gw.html / gw.js / gw.wasm / gw.data here
+#   make headless — build the headless module (gwplot.mjs / gwplot.wasm / gwplot.node.mjs)
+#                   into out/headless, from the same objects
 #   make JOBS=8   — build using 8 parallel jobs
 #   make clean    — remove demo outputs and isolated WASM GW objects
 #   make serve    — serve the demo on http://127.0.0.1:8765/gw.html
@@ -32,7 +34,7 @@ WASM_LDFLAGS_EXTRA := \
     --js-library $(THIS_DIR)/local-file-library.js \
     --shell-file $(THIS_DIR)/shell.html
 
-.PHONY: all clean serve
+.PHONY: all headless clean serve
 
 all:
 	@grep -Eq '^\#define SK_MILESTONE 143$$' $(THIS_DIR)/skia/include/core/SkMilestone.h || { echo "WASM requires Skia m143; rebuild dependencies with bash deps/wasm/build.sh"; exit 1; }
@@ -45,10 +47,20 @@ all:
 	    "WASM_LDFLAGS_EXTRA=$(WASM_LDFLAGS_EXTRA)" \
 	    "WASM_DEMO_INPUTS=$(THIS_DIR)/shell.html $(THIS_DIR)/pre.js $(THIS_DIR)/local-file-library.js $(REPO_ROOT)/test/test.fa $(REPO_ROOT)/test/test.fa.fai $(REPO_ROOT)/test/test.bam $(REPO_ROOT)/test/test.bam.bai"
 
+headless:
+	@grep -Eq '^\#define SK_MILESTONE 143$$' $(THIS_DIR)/skia/include/core/SkMilestone.h || { echo "WASM requires Skia m143; rebuild dependencies with bash deps/wasm/build.sh"; exit 1; }
+	cd $(REPO_ROOT) && env -u CFLAGS -u CXXFLAGS -u CPPFLAGS -u LDFLAGS -u LDLIBS emmake $(MAKE) $(if $(filter -j%,$(MAKEFLAGS)),,-j$(JOBS)) EMSCRIPTEN=1 \
+	    headless \
+	    HEADLESS_OUT=$(THIS_DIR)/out/headless \
+	    WASM_BUILD_DIR=$(THIS_DIR)/out/gw_objects \
+	    WASM_SKIA_PATH=$(WASM_SKIA_PATH) \
+	    WASM_HTS_PATH=$(WASM_HTS_PATH) \
+	    WASM_LZMA_PATH=$(WASM_LZMA_PATH)
+
 serve:
 	python3 $(THIS_DIR)/serve.py
 
 clean:
-	rm -rf $(THIS_DIR)/out/gw_objects
+	rm -rf $(THIS_DIR)/out/gw_objects $(THIS_DIR)/out/headless
 	rm -f $(THIS_DIR)/gw.html $(THIS_DIR)/gw.js \
 	      $(THIS_DIR)/gw.wasm $(THIS_DIR)/gw.data

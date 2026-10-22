@@ -146,6 +146,32 @@ $(WASM_BUILD_DIR)/%.o: %.cpp
 $(WASM_BUILD_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+# The browser UI's own link flags (deps/wasm/flags.mk)
+$(TARGET): LDFLAGS += $(WASM_UI_LDFLAGS)
+
+# Headless module: `emmake make EMSCRIPTEN=1 headless`. The same objects as the browser
+# UI, linked as an ES module for JavaScript (src/headless/gw_api.cpp) instead of main's
+# windowed UI: gwplot.mjs + gwplot.wasm for a Web Worker, and gwplot.node.mjs for Node
+# (pass it gwplot.wasm as wasmBinary). It reads files synchronously, so it has no
+# Asyncify, and resolves genome paths without gw's page (src/headless/offline_genome.cpp).
+HEADLESS_OUT ?= ./deps/wasm/out/headless
+HEADLESS_SOURCES := $(wildcard ./src/headless/*.cpp)
+HEADLESS_OBJECTS = $(filter-out $(WASM_BUILD_DIR)/src/main.o $(WASM_BUILD_DIR)/src/wasm_online.o,$(OBJECTS)) \
+                   $(patsubst ./%.cpp,$(WASM_BUILD_DIR)/%.o,$(HEADLESS_SOURCES))
+HEADLESS_LDFLAGS = $(LDFLAGS) -lembind --no-entry \
+                   -sMODULARIZE=1 -sEXPORT_ES6=1 -sEXPORT_NAME=createGwplot \
+                   -sEXPORTED_RUNTIME_METHODS=FS
+.PHONY: headless
+headless: $(HEADLESS_OUT)/gwplot.mjs $(HEADLESS_OUT)/gwplot.node.mjs
+$(HEADLESS_OBJECTS): deps/wasm/flags.mk
+-include $(patsubst ./%.cpp,$(WASM_BUILD_DIR)/%.d,$(HEADLESS_SOURCES))
+# No -g: the module carries no debug info
+$(HEADLESS_OUT)/gwplot.mjs: $(HEADLESS_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(filter-out -g,$(CXXFLAGS)) $(HEADLESS_OBJECTS) $(HEADLESS_LDFLAGS) -sENVIRONMENT=worker $(LDLIBS) -o $@
+$(HEADLESS_OUT)/gwplot.node.mjs: $(HEADLESS_OBJECTS)
+	@mkdir -p $(dir $@)
+	$(CXX) $(filter-out -g,$(CXXFLAGS)) $(HEADLESS_OBJECTS) $(HEADLESS_LDFLAGS) -sENVIRONMENT=node $(LDLIBS) -o $@
 endif
 SERVER_OBJECTS := ./protocol/viewer/native/viewer_interface.o
 -include $(OBJECTS:.o=.d) $(SERVER_OBJECTS:.o=.d)

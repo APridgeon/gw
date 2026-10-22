@@ -29,7 +29,8 @@
 
 #ifdef __EMSCRIPTEN__
 // Resolve a genome path: if it is an http/https URL, mount it as a virtual
-// Emscripten FS node via fetch() Range requests (defined in wasm_stubs.cpp).
+// Emscripten FS node via fetch() Range requests (defined in wasm_online.cpp for the
+// browser page; src/headless/offline_genome.cpp for the headless module, which can't).
 // Returns the local /remote/<name> path on success, or empty string on failure.
 // For local paths the original string is returned unchanged.
 std::string resolve_genome_path(const std::string& path);
