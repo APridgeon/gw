@@ -163,11 +163,28 @@ public:
         plot->keyPress(key, scancode, action, mods);
     }
 
-    void mouseEvent(double x, double y, int button, int action) {
+    void mouseEvent(double x, double y, int button, int action) { mouseEvent(x, y, button, action, 0); }
+
+    // A button press or release at (x, y), in frame-buffer pixels; ``mods`` are GLFW
+    // modifier bits (MOD_SHIFT, ...).
+    void mouseEvent(double x, double y, int button, int action, int mods) {
         ImGui::SetCurrentContext(imgui);
         plot->xPos_fb = x;
         plot->yPos_fb = y;
-        plot->mouseButton(button, action, 0);
+        plot->mouseButton(button, action, mods);
+    }
+
+    // The pointer moved to (x, y): with the left button down (a mouseEvent press), a drag
+    // that pans, or moves the scale bar or a track divider, as in gw's window.
+    void mouseMove(double x, double y) {
+        ImGui::SetCurrentContext(imgui);
+        plot->mousePos(x, y);
+    }
+
+    // A wheel or trackpad scroll, in steps: gw zooms (dy) or pans (dx), as in its window.
+    void scroll(double dx, double dy) {
+        ImGui::SetCurrentContext(imgui);
+        plot->scrollGesture(dx, dy);
     }
 
     // --- Markers ----------------------------------------------------------------------
@@ -419,7 +436,10 @@ EMSCRIPTEN_BINDINGS(gwplot) {
         .function("clearRegions", &Gw::clearRegions)
         .function("applyCommand", &Gw::applyCommand)
         .function("keyPress", &Gw::keyPress)
-        .function("mouseEvent", &Gw::mouseEvent)
+        .function("mouseEvent", emscripten::select_overload<void(double, double, int, int)>(&Gw::mouseEvent))
+        .function("mouseEvent", emscripten::select_overload<void(double, double, int, int, int)>(&Gw::mouseEvent))
+        .function("mouseMove", &Gw::mouseMove)
+        .function("scroll", &Gw::scroll)
         .function("addMarker", &Gw::addMarker)
         .function("removeMarker", &Gw::removeMarker)
         .function("clearMarkers", &Gw::clearMarkers)
@@ -485,5 +505,11 @@ EMSCRIPTEN_BINDINGS(gwplot) {
     emscripten::constant("PRESS", GLFW_PRESS);
     emscripten::constant("RELEASE", GLFW_RELEASE);
     emscripten::constant("MOUSE_BUTTON_LEFT", GLFW_MOUSE_BUTTON_LEFT);
+    emscripten::constant("MOUSE_BUTTON_RIGHT", GLFW_MOUSE_BUTTON_RIGHT);
+    emscripten::constant("MOUSE_BUTTON_MIDDLE", GLFW_MOUSE_BUTTON_MIDDLE);
+    emscripten::constant("MOD_SHIFT", GLFW_MOD_SHIFT);
+    emscripten::constant("MOD_CONTROL", GLFW_MOD_CONTROL);
+    emscripten::constant("MOD_ALT", GLFW_MOD_ALT);
+    emscripten::constant("MOD_SUPER", GLFW_MOD_SUPER);
     emscripten::constant("INTRON_TRACK_KIND", static_cast<int>(HGW::FType::INTRON));
 }
